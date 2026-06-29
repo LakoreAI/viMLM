@@ -1,0 +1,45 @@
+project:
+  name: "Learn From Basics - LFB"
+  task: "mlm"
+  dataset: "8Opt/bert-mlm-experiments-en"
+
+model:
+  pad_token_id: 0
+  pre_layer_norm: false
+  vocab_size: 1000
+  max_seq_len: 128
+  hidden_size: 256
+  num_layers: 4
+  num_heads: 4
+  ff_dim: 1024
+  dropout: 0.3
+  mlm_probability: 0.15
+  mask_token_id: 4
+  num_segments: 2
+
+tokenizer:
+  name: "bert-base-uncased"
+  padding: "max_length"
+  truncation: true
+  max_length: 512
+
+training:
+  epochs: 3
+  batch_size: 8
+  gradient_accumulation_steps: 4
+  learning_rate: 5.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  seed: 18210
+  eval_steps: 100
+  save_steps: 200
+  checkpoint_dir: "./checkpoints"
+  use_wandb: true
+  wandb_project: "viMLM"
+  wandb_entity: "mlm"
+  wandb_run_name: "viMLM"
+  save_best: true
+  save_last: true
+
+logging:
+  level: "info"

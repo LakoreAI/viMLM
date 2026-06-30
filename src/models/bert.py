@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from src.models.layers.attention import MultiHeadSelfAttention
 from src.models.layers.feedforward import FeedForward
 from src.models.layers.embedding import BertEmbeddings
-from src.models.layers.encoder import EncoderLayer
+from src.models.layers.encoder import EncoderLayer, UNetEncoderLayer
 
 
 class BertEncoder(nn.Module):
@@ -17,18 +17,72 @@ class BertEncoder(nn.Module):
         num_layers: int,
         dropout: float = 0.1,
         use_rope: bool = False,
+        use_unet_shrink: bool = False,
+        unet_bottleneck_ratio: float = 0.5,
+        layer_hidden_sizes: list = None,
     ):
         super().__init__()
-        self.layers = nn.ModuleList(
-            [
-                EncoderLayer(hidden_size, ff_dim, num_heads, dropout, use_rope=use_rope)
-                for _ in range(num_layers)
-            ]
-        )
+        self.layer_sizes = []
+        if use_unet_shrink:
+            bottleneck_size = int(hidden_size * unet_bottleneck_ratio)
+            if num_layers > 1:
+                mid = (num_layers - 1) / 2
+                for i in range(num_layers):
+                    dist = min(i, num_layers - 1 - i)
+                    r = dist / mid if mid > 0 else 0.0
+                    size = hidden_size - r * (hidden_size - bottleneck_size)
+                    # Round to nearest multiple of 2 * num_heads to ensure head_dim is even (required for RoPE)
+                    size = max(
+                        2 * num_heads,
+                        round(size / (2 * num_heads)) * (2 * num_heads),
+                    )
+                    self.layer_sizes.append(size)
+            else:
+                self.layer_sizes = [hidden_size]
+        elif layer_hidden_sizes is not None:
+            self.layer_sizes = layer_hidden_sizes
+        else:
+            self.layer_sizes = [hidden_size] * num_layers
+
+        print(f"Encoder Layer Hidden Sizes: {self.layer_sizes}")
+
+        self.layers = nn.ModuleList()
+        in_features = hidden_size
+        for i, out_features in enumerate(self.layer_sizes):
+            ff_dim_i = int(out_features * (ff_dim / hidden_size))
+            if use_unet_shrink or layer_hidden_sizes is not None:
+                self.layers.append(
+                    UNetEncoderLayer(
+                        in_features=in_features,
+                        out_features=out_features,
+                        ff_dim=ff_dim_i,
+                        num_heads=num_heads,
+                        dropout=dropout,
+                        use_rope=use_rope,
+                    )
+                )
+            else:
+                self.layers.append(
+                    EncoderLayer(
+                        hidden_size=out_features,
+                        ff_dim=ff_dim_i,
+                        num_heads=num_heads,
+                        dropout=dropout,
+                        use_rope=use_rope,
+                    )
+                )
+            in_features = out_features
+
+        if in_features != hidden_size:
+            self.final_proj = nn.Linear(in_features, hidden_size)
+        else:
+            self.final_proj = None
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
         for layer in self.layers:
             x = layer(x, mask)
+        if self.final_proj is not None:
+            x = self.final_proj(x)
         return x
 
 
@@ -50,6 +104,9 @@ class BertForPreTraining(nn.Module):
             num_layers=cfg.num_layers,
             dropout=cfg.dropout,
             use_rope=getattr(cfg, "use_rope", False),
+            use_unet_shrink=getattr(cfg, "use_unet_shrink", False),
+            unet_bottleneck_ratio=getattr(cfg, "unet_bottleneck_ratio", 0.5),
+            layer_hidden_sizes=getattr(cfg, "layer_hidden_sizes", None),
         )
         self.norm = nn.LayerNorm(cfg.hidden_size)
 

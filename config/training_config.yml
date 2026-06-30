@@ -1,3 +1,4 @@
+seed: 18210
 project:
   name: "Learn From Basics - LFB"
   task: "mlm"
@@ -16,7 +17,10 @@ model:
   mlm_probability: 0.15
   mask_token_id: 4
   num_segments: 2
-  use_rope: true
+  use_rope: false
+  use_unet_shrink: false
+  unet_bottleneck_ratio: 0.5
+  # layer_hidden_sizes: [256, 168, 168, 256]
 
 tokenizer:
   name: "bert-base-uncased"

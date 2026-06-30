@@ -8,7 +8,7 @@ from transformers import (
 )
 
 from src.utils.data_utils import load_sentences_from_file
-from src.utils.model_utils import count_parameters
+from src.utils.model_utils import count_parameters, seed_everything
 from src.models.config import Config
 from src.models.bert import BertForPreTraining
 from src.dataset import BertDataCollator, BertPreTrainDataset
@@ -42,6 +42,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     cfg = Config(args.config_path)
+    seed_everything(getattr(cfg, "seed", 42))
 
     # 1) Data Loading
     print("Loading corpus...")
@@ -79,18 +80,23 @@ def main():
     count_parameters(model)
 
     # 6) Optimizer & Scheduler
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    # Prefer YAML config values; fall back to CLI args for backward compatibility
+    lr = getattr(cfg, "learning_rate", args.lr)
+    weight_decay = getattr(cfg, "weight_decay", 0.01)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     total_steps = len(train_loader) * args.epochs
+    warmup_ratio = getattr(cfg, "warmup_ratio", None)
+    warmup_steps = int(total_steps * warmup_ratio) if warmup_ratio else args.warmup_steps
     if args.scheduler == "cosine":
         scheduler = get_cosine_schedule_with_warmup(
             optimizer,
-            num_warmup_steps=args.warmup_steps,
+            num_warmup_steps=warmup_steps,
             num_training_steps=total_steps,
         )
     else:
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
-            num_warmup_steps=args.warmup_steps,
+            num_warmup_steps=warmup_steps,
             num_training_steps=total_steps,
         )
 

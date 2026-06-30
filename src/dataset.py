@@ -28,6 +28,17 @@ class BertDataCollator:
             self.sep_id = tokenizer.SPECIAL["[SEP]"]
             self.special_ids = set(tokenizer.SPECIAL.values())
             self.vocab_size = len(tokenizer.token2id)
+        elif hasattr(tokenizer, "token2id"):
+            self.pad_id = tokenizer.token2id["[PAD]"]
+            self.mask_id = tokenizer.token2id["[MASK]"]
+            self.cls_id = tokenizer.token2id["[CLS]"]
+            self.sep_id = tokenizer.token2id["[SEP]"]
+            self.special_ids = set(
+                tokenizer.token2id[k]
+                for k in ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"]
+                if k in tokenizer.token2id
+            )
+            self.vocab_size = len(tokenizer.token2id)
         else:
             self.pad_id = tokenizer.pad_token_id
             self.mask_id = tokenizer.mask_token_id

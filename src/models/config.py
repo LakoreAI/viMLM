@@ -33,11 +33,19 @@ class Config:
 
         # Instantiate tokenizer
         if "type" in tokenizer_cfg:
-            self.tokenizer = get_tokenizer(tokenizer_cfg)
-            if hasattr(self.tokenizer, "vocab_size"):
-                self.vocab_size = self.tokenizer.vocab_size
-            elif hasattr(self.tokenizer, "token2id"):
+            import pickle
+
+            vocab_path = tokenizer_cfg.get("vocab_path")
+            if vocab_path and Path(vocab_path).exists():
+                with open(vocab_path, "rb") as f:
+                    self.tokenizer = pickle.load(f)
+            else:
+                self.tokenizer = get_tokenizer(tokenizer_cfg)
+
+            if hasattr(self.tokenizer, "token2id"):
                 self.vocab_size = len(self.tokenizer.token2id)
+            elif hasattr(self.tokenizer, "vocab_size"):
+                self.vocab_size = self.tokenizer.vocab_size
             else:
                 self.vocab_size = model_cfg.get("vocab_size", 1000)
         else:

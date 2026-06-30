@@ -9,14 +9,25 @@ def get_tokenizer(tokenizer_config: dict) -> object:
     Returns a tokenizer instance based on the provided configuration.
     """
     tokenizer_type = tokenizer_config.get("type")
+    vocab_size = tokenizer_config.get("vocab_size")
+
     if tokenizer_type == "bpe":
-        return BPETokenizer(**tokenizer_config)
+        kwargs = {}
+        if vocab_size is not None:
+            kwargs["vocab_size"] = vocab_size
+        return BPETokenizer(**kwargs)
     elif tokenizer_type == "wp":
-        return WordPieceTokenizer(**tokenizer_config)
+        kwargs = {}
+        if vocab_size is not None:
+            kwargs["vocab_size"] = vocab_size
+        return WordPieceTokenizer(**kwargs)
     elif tokenizer_type == "unigram":
-        return UnigramTokenizer(**tokenizer_config)
+        kwargs = {}
+        if vocab_size is not None:
+            kwargs["vocab_size"] = vocab_size
+        return UnigramTokenizer(**kwargs)
     elif tokenizer_type == "char":
-        return CharTokenizer(**tokenizer_config)
+        return CharTokenizer()
     else:
         raise ValueError(f"Unknown tokenizer type: {tokenizer_type}")
 

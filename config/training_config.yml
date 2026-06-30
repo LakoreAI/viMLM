@@ -16,6 +16,7 @@ model:
   mlm_probability: 0.15
   mask_token_id: 4
   num_segments: 2
+  use_rope: true
 
 tokenizer:
   name: "bert-base-uncased"

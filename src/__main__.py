@@ -1,14 +1,19 @@
 import argparse
 
+import torch
 from torch.utils.data import DataLoader, random_split
-from transformers import get_linear_schedule_with_warmup
+from transformers import (
+    get_linear_schedule_with_warmup,
+    get_cosine_schedule_with_warmup,
+)
 
 from src.utils.data_utils import load_sentences_from_file
 from src.utils.model_utils import count_parameters
 from src.models.config import Config
 from src.models.bert import BertForPreTraining
 from src.dataset import BertDataCollator, BertPreTrainDataset
-from src.pipe.training_pipe import train, eval
+from src.pipe.training_pipe import train
+from src.pipe.eval_pipe import eval
 
 
 def parse_args():
@@ -26,6 +31,9 @@ def parse_args():
     parser.add_argument("--eval-ratio", type=float, default=0.1)
     parser.add_argument("--config-path", type=str, default="config/training_config.yml")
     parser.add_argument("--no-eval", action="store_true")
+    parser.add_argument(
+        "--scheduler", type=str, default="cosine", choices=["linear", "cosine"]
+    )
     return parser.parse_args()
 
 
@@ -73,9 +81,18 @@ def main():
     # 6) Optimizer & Scheduler
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     total_steps = len(train_loader) * args.epochs
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=total_steps
-    )
+    if args.scheduler == "cosine":
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=args.warmup_steps,
+            num_training_steps=total_steps,
+        )
+    else:
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=args.warmup_steps,
+            num_training_steps=total_steps,
+        )
 
     # 7) Train
     print("Starting training...")
@@ -92,3 +109,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

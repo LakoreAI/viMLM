@@ -6,10 +6,17 @@ from src.models.layers.feedforward import FeedForward
 
 class EncoderLayer(nn.Module):
     def __init__(
-        self, hidden_size: int, ff_dim: int, num_heads: int, dropout: float = 0.1
+        self,
+        hidden_size: int,
+        ff_dim: int,
+        num_heads: int,
+        dropout: float = 0.1,
+        use_rope: bool = False,
     ):
         super().__init__()
-        self.attn = MultiHeadSelfAttention(num_heads, hidden_size, dropout)
+        self.attn = MultiHeadSelfAttention(
+            num_heads, hidden_size, dropout, use_rope=use_rope
+        )
         self.ff = FeedForward(hidden_size, ff_dim, dropout)
         self.norm1 = nn.LayerNorm(hidden_size)
         self.norm2 = nn.LayerNorm(hidden_size)

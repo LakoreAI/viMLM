@@ -1,0 +1,13 @@
+Học máy là một lĩnh vực của trí tuệ nhân tạo.
+Nó cho phép máy tính tự học hỏi từ dữ liệu.
+Mô hình ngôn ngữ lớn đang phát triển rất nhanh.
+Chúng ta đang xây dựng một mô hình Masked Language Model cho tiếng Việt.
+Học hỏi từ cơ bản giúp hiểu sâu hơn.
+Học máy và học sâu rất thú vị.
+Chúng tôi sử dụng thư viện PyTorch để huấn luyện mô hình.
+Đây là một ví dụ đơn giản về xử lý ngôn ngữ tự nhiên.
+Mô hình BERT được giới thiệu vào năm 2018 bởi Google.
+RoBERTa là phiên bản cải tiến của BERT.
+PhoBERT là mô hình BERT cho tiếng Việt.
+Huấn luyện mô hình từ đầu giúp tối ưu hóa tốt hơn cho các tác vụ cụ thể.
+Hy vọng mô hình này sẽ đạt kết quả tốt.

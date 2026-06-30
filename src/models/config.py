@@ -20,6 +20,13 @@ class Config:
         self.dropout = model_cfg.get("dropout", 0.1)
         self.use_rope = model_cfg.get("use_rope", False)
 
+        # Training/wandb config
+        training_cfg = self.raw_config.get("training", {})
+        self.use_wandb = training_cfg.get("use_wandb", False)
+        self.wandb_project = training_cfg.get("wandb_project", "viMLM")
+        self.wandb_entity = training_cfg.get("wandb_entity", None)
+        self.wandb_run_name = training_cfg.get("wandb_run_name", "viMLM")
+
         # Tokenizer config
         tokenizer_cfg = self.raw_config.get("tokenizer", {})
         self.tokenizer_name = tokenizer_cfg.get("name", "bert-base-uncased")
@@ -35,6 +42,6 @@ class Config:
                 self.vocab_size = model_cfg.get("vocab_size", 1000)
         else:
             from transformers import AutoTokenizer
+
             self.tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name)
             self.vocab_size = len(self.tokenizer)
-

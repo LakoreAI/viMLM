@@ -37,11 +37,20 @@ def eval_epoch(model, loader, device):
     }
 
 
-def eval(model, loader, device):
+def eval(model, loader, device, callbacks=None):
     metrics = eval_epoch(model, loader, device)
-    print(
-        f"Eval  loss={metrics['loss']:.4f}"
-        f"  mlm_acc={metrics['mlm_acc']:.3f}"
-    )
+    print(f"Eval  loss={metrics['loss']:.4f}  mlm_acc={metrics['mlm_acc']:.3f}")
+    if callbacks is not None:
+        if not isinstance(callbacks, list):
+            callbacks = [callbacks]
+        for cb in callbacks:
+            if hasattr(cb, "on_evaluate"):
+                cb.on_evaluate(
+                    trainer=None,
+                    step=0,
+                    metrics={
+                        "loss": metrics["loss"],
+                        "accuracy": metrics["mlm_acc"],
+                    },
+                )
     return metrics
-

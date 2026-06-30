@@ -62,7 +62,6 @@ def apply_rotary_pos_emb(q, k, cos, sin):
 
 
 class MultiHeadSelfAttention(nn.Module):
-
     def __init__(
         self,
         num_heads: int,
@@ -102,4 +101,3 @@ class MultiHeadSelfAttention(nn.Module):
         attn = self.dropout(F.softmax(scores, dim=-1))
         out = (attn @ V).transpose(1, 2).contiguous().view(B, L, D)
         return self.W_o(out)
-

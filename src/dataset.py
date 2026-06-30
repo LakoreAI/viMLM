@@ -33,7 +33,9 @@ class BertDataCollator:
             self.mask_id = tokenizer.mask_token_id
             self.cls_id = tokenizer.cls_token_id
             self.sep_id = tokenizer.sep_token_id
-            self.special_ids = set(x for x in tokenizer.all_special_ids if x is not None)
+            self.special_ids = set(
+                x for x in tokenizer.all_special_ids if x is not None
+            )
             self.vocab_size = len(tokenizer)
 
     def torch_mask_tokens(self, inputs):
@@ -47,7 +49,7 @@ class BertDataCollator:
         special_tokens_mask = torch.zeros_like(inputs, dtype=torch.bool)
         for val in self.special_ids:
             if val is not None:
-                special_tokens_mask |= (inputs == val)
+                special_tokens_mask |= inputs == val
 
         probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
         masked_indices = torch.bernoulli(probability_matrix).bool()
@@ -114,4 +116,3 @@ class BertPreTrainDataset(Dataset):
         input_ids = self.tokenizer.encode(sent)
         segment_ids = [0] * len(input_ids)
         return input_ids, segment_ids
-

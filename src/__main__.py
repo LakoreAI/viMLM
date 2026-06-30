@@ -95,6 +95,18 @@ def main():
         )
 
     # 7) Train
+    callbacks = []
+    if cfg.use_wandb:
+        from src.callbacks.wandb_callbacks import WandbCallback
+
+        wandb_cb = WandbCallback(
+            project_name=cfg.wandb_project,
+            run_name=cfg.wandb_run_name,
+            config=cfg.raw_config,
+            entity=cfg.wandb_entity,
+        )
+        callbacks.append(wandb_cb)
+
     print("Starting training...")
     train(
         model=model,
@@ -104,9 +116,9 @@ def main():
         device=device,
         epochs=args.epochs,
         eval_loader=eval_loader,
+        callbacks=callbacks,
     )
 
 
 if __name__ == "__main__":
     main()
-

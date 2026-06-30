@@ -85,4 +85,3 @@ class BertForPreTraining(nn.Module):
             )
 
         return {"loss": loss, "mlm_logits": mlm_logits}
-

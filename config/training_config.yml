@@ -14,13 +14,16 @@ model:
   num_heads: 4
   ff_dim: 1024
   dropout: 0.3
-  mlm_probability: 0.15
+  mlm_probability: 0.30
   mask_token_id: 4
   num_segments: 2
   use_rope: false
   use_unet_shrink: false
   use_unet_skip: false
   unet_bottleneck_ratio: 0.5
+  use_gradient_checkpointing: false
+  # ffn_type: one of "gelu" (default), "swiglu" (LLaMA/PaLM), "geglu" (Gemma/ModernBERT)
+  ffn_type: "gelu"
   # layer_hidden_sizes: [256, 168, 168, 256]
 
 tokenizer:

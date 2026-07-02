@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 from src.models.layers.attention import MultiHeadSelfAttention
 from src.models.layers.feedforward import FeedForward
@@ -21,8 +22,11 @@ class BertEncoder(nn.Module):
         unet_bottleneck_ratio: float = 0.5,
         layer_hidden_sizes: list = None,
         use_unet_skip: bool = False,
+        use_gradient_checkpointing: bool = False,
+        ffn_type: str = "gelu",
     ):
         super().__init__()
+        self.use_gradient_checkpointing = use_gradient_checkpointing
         self.layer_sizes = []
         if use_unet_shrink:
             bottleneck_size = int(hidden_size * unet_bottleneck_ratio)
@@ -78,6 +82,7 @@ class BertEncoder(nn.Module):
                         dropout=dropout,
                         use_rope=use_rope,
                         use_skip=i in self.pair_of,
+                        ffn_type=ffn_type,
                     )
                 )
             else:
@@ -88,6 +93,7 @@ class BertEncoder(nn.Module):
                         num_heads=num_heads,
                         dropout=dropout,
                         use_rope=use_rope,
+                        ffn_type=ffn_type,
                     )
                 )
             in_features = out_features
@@ -98,12 +104,23 @@ class BertEncoder(nn.Module):
             self.final_proj = None
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+        use_checkpoint = self.use_gradient_checkpointing and self.training
+
         down_cache = {}
         for i, layer in enumerate(self.layers):
-            if self.use_skip and i in self.pair_of:
-                x = layer(x, mask, skip=down_cache.get(self.pair_of[i]))
+            skip = down_cache.get(self.pair_of[i]) if (self.use_skip and i in self.pair_of) else None
+
+            if use_checkpoint:
+                if self.use_skip and i in self.pair_of:
+                    x = checkpoint(layer, x, mask, skip, use_reentrant=False)
+                else:
+                    x = checkpoint(layer, x, mask, use_reentrant=False)
             else:
-                x = layer(x, mask)
+                if self.use_skip and i in self.pair_of:
+                    x = layer(x, mask, skip=skip)
+                else:
+                    x = layer(x, mask)
+
             if self.use_skip and i in self.skip_source_idxs:
                 down_cache[i] = x
         if self.final_proj is not None:
@@ -133,6 +150,8 @@ class BertForPreTraining(nn.Module):
             unet_bottleneck_ratio=getattr(cfg, "unet_bottleneck_ratio", 0.5),
             layer_hidden_sizes=getattr(cfg, "layer_hidden_sizes", None),
             use_unet_skip=getattr(cfg, "use_unet_skip", False),
+            use_gradient_checkpointing=getattr(cfg, "use_gradient_checkpointing", False),
+            ffn_type=getattr(cfg, "ffn_type", "gelu"),
         )
         self.norm = nn.LayerNorm(cfg.hidden_size)
 

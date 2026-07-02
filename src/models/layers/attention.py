@@ -1,5 +1,3 @@
-import math
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -75,10 +73,10 @@ class MultiHeadSelfAttention(nn.Module):
         ), f"hidden_size ({hidden_size}) must be divisible by num_heads ({num_heads})"
         self.h = num_heads
         self.d_k = hidden_size // num_heads
-        self.W_q = nn.Linear(hidden_size, hidden_size)
-        self.W_k = nn.Linear(hidden_size, hidden_size)
-        self.W_v = nn.Linear(hidden_size, hidden_size)
-        self.W_o = nn.Linear(hidden_size, hidden_size)
+        self.W_q = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.W_k = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.W_v = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.W_o = nn.Linear(hidden_size, hidden_size, bias=False)
         self.dropout = nn.Dropout(dropout)
         self.use_rope = use_rope
         if use_rope:
@@ -96,11 +94,20 @@ class MultiHeadSelfAttention(nn.Module):
             cos, sin = self.rotary_emb(Q, seq_len=L)
             Q, K = apply_rotary_pos_emb(Q, K, cos, sin)
 
-        scores = (Q @ K.transpose(-2, -1)) / math.sqrt(self.d_k)
+        attn_mask = None
         if mask is not None:
-            if len(mask.shape) == 2:
+            if mask.dim() == 2:
                 mask = mask.unsqueeze(1).unsqueeze(2)
-            scores = scores.masked_fill(mask == 0, float("-inf"))
-        attn = self.dropout(F.softmax(scores, dim=-1))
-        out = (attn @ V).transpose(1, 2).contiguous().view(B, L, D)
+            attn_mask = mask.bool()
+
+        # FlashAttention / memory-efficient kernel via PyTorch SDPA: tiles the
+        # (B, H, L, L) score matrix instead of materializing it in HBM.
+        out = F.scaled_dot_product_attention(
+            Q,
+            K,
+            V,
+            attn_mask=attn_mask,
+            dropout_p=self.dropout.p if self.training else 0.0,
+        )
+        out = out.transpose(1, 2).contiguous().view(B, L, D)
         return self.W_o(out)

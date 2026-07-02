@@ -12,12 +12,13 @@ class EncoderLayer(nn.Module):
         num_heads: int,
         dropout: float = 0.1,
         use_rope: bool = False,
+        ffn_type: str = "gelu",
     ):
         super().__init__()
         self.attn = MultiHeadSelfAttention(
             num_heads, hidden_size, dropout, use_rope=use_rope
         )
-        self.ff = FeedForward(hidden_size, ff_dim, dropout)
+        self.ff = FeedForward(hidden_size, ff_dim, dropout, ffn_type=ffn_type)
         self.norm1 = nn.LayerNorm(hidden_size)
         self.norm2 = nn.LayerNorm(hidden_size)
         self.dropout = nn.Dropout(dropout)
@@ -46,6 +47,7 @@ class UNetEncoderLayer(nn.Module):
         dropout: float = 0.1,
         use_rope: bool = False,
         use_skip: bool = False,
+        ffn_type: str = "gelu",
     ):
         super().__init__()
         self.in_features = in_features
@@ -59,7 +61,7 @@ class UNetEncoderLayer(nn.Module):
         self.attn = MultiHeadSelfAttention(
             num_heads, out_features, dropout, use_rope=use_rope
         )
-        self.ff = FeedForward(out_features, ff_dim, dropout)
+        self.ff = FeedForward(out_features, ff_dim, dropout, ffn_type=ffn_type)
         self.norm1 = nn.LayerNorm(out_features)
         self.norm2 = nn.LayerNorm(out_features)
         self.dropout = nn.Dropout(dropout)

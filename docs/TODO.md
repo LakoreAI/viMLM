@@ -57,13 +57,13 @@
 
 ## Architectural Improvements
 
-- [ ] **SwiGLU Feed-Forward Network**
-  - Replace the current `Linear → GELU → Linear` FFN with the SwiGLU gated variant: `(xW ⊙ SiLU(xV)) → Linear`
-  - Why: SwiGLU consistently outperforms GELU FFN on language tasks (used in LLaMA, PaLM, Gemma). No extra parameters if `ff_dim` is scaled by 2/3
-  - Where: add `SwiGLUFeedForward` to `src/models/layers/feedforward.py`; toggle via config `use_swiglu: true`
+- [x] **SwiGLU / GeGLU Feed-Forward Network**
+  - Replace the current `Linear → GELU → Linear` FFN with the gated variants: SwiGLU `(SiLU(xW) ⊙ xV) → Linear` and GeGLU `(GELU(xW) ⊙ xV) → Linear`
+  - Why: gated FFNs consistently outperform plain GELU FFN on language tasks (SwiGLU used in LLaMA/PaLM, GeGLU in Gemma/ModernBERT). Gate/up dim scaled to ~2/3 `ff_dim` to keep parameter count comparable
+  - Where: `src/models/layers/feedforward.py` (`FeedForward` now takes `ffn_type`); toggle via config `model.ffn_type: "gelu" | "swiglu" | "geglu"` (default `"gelu"`, fully backward compatible)
   - Reference: Shazeer (2020) "GLU Variants Improve Transformer" (arXiv:2002.05202)
 
-- [ ] **Flash Attention via `scaled_dot_product_attention`**
+- [x] **Flash Attention via `scaled_dot_product_attention`**
   - Replace the manual `Q @ K.T / sqrt(d) → softmax → @ V` in `MultiHeadSelfAttention` with `F.scaled_dot_product_attention(Q, K, V, attn_mask, dropout_p)`
   - Why: PyTorch 2.0+ implements FlashAttention (tiled, IO-aware) under the hood — same result, 2–4× faster, O(L) memory instead of O(L²). Zero code complexity cost
   - Where: `src/models/layers/attention.py`, guarded by `torch.__version__` check for backward compatibility
@@ -95,13 +95,13 @@
 
 ### Pretraining Objective
 
-- [ ] **Increase MLM masking ratio from 15% → 30%**
+- [x] **Increase MLM masking ratio from 15% → 30%**
   - The original 15% rate (Devlin 2018) is now considered suboptimal
   - ModernBERT (2024) increased it to 30%, reducing gradient variance and accelerating convergence
   - Where: `mlm_probability` in `training_config.yml` and `BertDataCollator`
   - Reference: Werner et al. (2024) "ModernBERT" (arXiv:2412.13663) — https://arxiv.org/abs/2412.13663
 
-- [ ] **Remove bias from linear layers (except output)**
+- [x] **Remove bias from linear layers (except output)**
   - ModernBERT removes bias from all `nn.Linear` layers in attention and FFN (not the final MLM head)
   - Why: Reduces parameters ~1–2% with no measurable quality loss; also slightly improves training stability
   - Where: add `bias=False` to `W_q`, `W_k`, `W_v`, `W_o` in `MultiHeadSelfAttention` and `FeedForward`
@@ -159,7 +159,7 @@
 
 ### Training Efficiency
 
-- [ ] **Gradient checkpointing** *(one-line change, high impact)*
+- [x] **Gradient checkpointing** *(one-line change, high impact)*
   - Call `model.gradient_checkpointing_enable()` or wrap each `EncoderLayer` with `torch.utils.checkpoint.checkpoint()`
   - Why: trades ~20–30% extra compute for 50–80% less activation memory — lets you double your batch size or sequence length on the same GPU
   - Where: one call in `__main__.py` after `model.to(device)`, or inside `BertEncoder.forward()`
@@ -172,7 +172,7 @@
 
 ### Data Quality & Sources
 
-- [ ] **Add a text deduplication step to the data pipeline**
+- [x] **Add a text deduplication step to the data pipeline**
   - Duplicate sentences in pretraining corpora are a known source of memorisation and wasted compute
   - Use MinHash LSH (via `datasketch` library) or exact SHA-256 hashing to remove near-duplicate sentences before training
   - Reference: Lee et al. (2022) "Deduplicating Training Data Makes LMs Better" (arXiv:2107.06499) — https://arxiv.org/abs/2107.06499
@@ -192,7 +192,7 @@
 
 ### Monitoring & Reproducibility
 
-- [ ] **Log gradient norms to W&B during training**
+- [x] **Log gradient norms to W&B during training**
   - Add `grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)` return value logging to `WandbCallback.on_step_end()`
   - Why: spiking grad norms are the earliest signal of training instability, invisible without this
   - Where: `src/callbacks/wandb_callbacks.py`
@@ -233,7 +233,7 @@
   - Where: `src/__main__.py` — swap one import
   - Reference: Dettmers et al. (2022) "8-bit Optimizers via Block-wise Quantization" (arXiv:2110.02861) — https://arxiv.org/abs/2110.02861
 
-- [ ] **Switch AMP dtype from FP16 → BF16**
+- [x] **Switch AMP dtype from FP16 → BF16**
   - Change `torch.cuda.amp.autocast(dtype=torch.float16)` → `dtype=torch.bfloat16`
   - Why: BF16 has the same dynamic range as FP32 (8 exponent bits vs FP16's 5), meaning it almost never overflows or underflows — no loss scaling needed, training is more stable especially early on. Supported on A100, RTX 3090+, and all modern GPUs
   - Where: `src/pipe/training_pipe.py` — one argument change

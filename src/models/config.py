@@ -24,6 +24,8 @@ class Config:
         self.unet_bottleneck_ratio = model_cfg.get("unet_bottleneck_ratio", 0.5)
         self.layer_hidden_sizes = model_cfg.get("layer_hidden_sizes", None)
         self.use_unet_skip = model_cfg.get("use_unet_skip", False)
+        self.use_gradient_checkpointing = model_cfg.get("use_gradient_checkpointing", False)
+        self.ffn_type = model_cfg.get("ffn_type", "gelu")
 
         # Training/wandb config
         training_cfg = self.raw_config.get("training", {})

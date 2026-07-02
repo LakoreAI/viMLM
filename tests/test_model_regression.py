@@ -46,6 +46,8 @@ BASE_CFG = dict(
     unet_bottleneck_ratio=0.5,
     layer_hidden_sizes=None,
     use_unet_skip=False,
+    use_gradient_checkpointing=False,
+    ffn_type="gelu",
 )
 
 SCENARIOS = {
@@ -53,6 +55,8 @@ SCENARIOS = {
     "rope": {"use_rope": True},
     "unet_shrink": {"use_unet_shrink": True},
     "unet_shrink_skip": {"use_unet_shrink": True, "use_unet_skip": True},
+    "swiglu": {"ffn_type": "swiglu"},
+    "geglu": {"ffn_type": "geglu"},
 }
 
 

@@ -13,7 +13,7 @@ def eval_epoch(model, loader, device):
         mlm_labels = mlm_labels.to(device)
 
         device_type = "cuda" if device.type == "cuda" else "cpu"
-        with torch.amp.autocast(device_type=device_type, enabled=(device.type == "cuda")):
+        with torch.amp.autocast(device_type=device_type, dtype=torch.bfloat16):
             out = model(input_ids, segment_ids, mask=attn_mask, mlm_labels=mlm_labels)
             loss = out["loss"]
 

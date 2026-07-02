@@ -25,7 +25,9 @@ class CheckpointCallback:
 
         os.makedirs(checkpoint_dir, exist_ok=True)
 
-    def on_step_end(self, trainer, step: int, loss: float, lr: float) -> None:
+    def on_step_end(
+        self, trainer, step: int, loss: float, lr: float, grad_norm: float = None
+    ) -> None:
         if self.save_steps and step > 0 and step % self.save_steps == 0:
             checkpoint_path = os.path.join(self.checkpoint_dir, f"checkpoint-{step}.pt")
             self._save_checkpoint(checkpoint_path)

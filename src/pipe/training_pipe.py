@@ -8,7 +8,6 @@ def train_epoch(
     optimizer,
     scheduler,
     device,
-    scaler=None,
     callbacks=None,
     global_step=0,
     gradient_accumulation_steps=1,
@@ -26,29 +25,21 @@ def train_epoch(
         attn_mask = attn_mask.to(device)
         mlm_labels = mlm_labels.to(device)
 
-        # Autocast mixed precision
+        # BF16 autocast mixed precision: unlike FP16, BF16 has FP32's exponent
+        # range, so it doesn't need GradScaler / loss scaling to stay stable.
         device_type = "cuda" if device.type == "cuda" else "cpu"
-        with torch.amp.autocast(device_type=device_type, enabled=(device.type == "cuda")):
+        with torch.amp.autocast(device_type=device_type, dtype=torch.bfloat16):
             out = model(input_ids, segment_ids, mask=attn_mask, mlm_labels=mlm_labels)
             loss = out["loss"]
             if gradient_accumulation_steps > 1:
                 loss = loss / gradient_accumulation_steps
 
-        if scaler is not None and device.type == "cuda":
-            scaler.scale(loss).backward()
-        else:
-            loss.backward()
+        loss.backward()
 
         # Optimizer step
         if (step_idx + 1) % gradient_accumulation_steps == 0 or (step_idx + 1) == len(loader):
-            if scaler is not None and device.type == "cuda":
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                optimizer.step()
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
 
             optimizer.zero_grad()
 
@@ -76,7 +67,11 @@ def train_epoch(
                 for cb in callbacks:
                     if hasattr(cb, "on_step_end"):
                         cb.on_step_end(
-                            trainer=None, step=global_step, loss=logged_loss, lr=lr
+                            trainer=None,
+                            step=global_step,
+                            loss=logged_loss,
+                            lr=lr,
+                            grad_norm=grad_norm.item(),
                         )
                     if hasattr(cb, "log_metrics"):
                         cb.log_metrics(
@@ -121,8 +116,6 @@ def train(
     gradient_accumulation_steps=1,
     eval_steps=None,
 ):
-    scaler = torch.amp.GradScaler("cuda", enabled=(device.type == "cuda"))
-
     if callbacks is None:
         callbacks = []
     elif not isinstance(callbacks, list):
@@ -140,7 +133,6 @@ def train(
             optimizer,
             scheduler,
             device,
-            scaler=scaler,
             callbacks=callbacks,
             global_step=global_step,
             gradient_accumulation_steps=gradient_accumulation_steps,

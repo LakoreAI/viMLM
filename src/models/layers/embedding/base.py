@@ -33,3 +33,4 @@ class BertEmbeddings(nn.Module):
             pos = torch.arange(L, device=input_ids.device).unsqueeze(0)
             emb = emb + self.position_emb(pos)
         return self.dropout(self.norm(emb))
+

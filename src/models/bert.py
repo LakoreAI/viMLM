@@ -20,6 +20,7 @@ class BertEncoder(nn.Module):
         use_unet_shrink: bool = False,
         unet_bottleneck_ratio: float = 0.5,
         layer_hidden_sizes: list = None,
+        use_unet_skip: bool = False,
     ):
         super().__init__()
         self.layer_sizes = []
@@ -46,11 +47,28 @@ class BertEncoder(nn.Module):
 
         print(f"Encoder Layer Hidden Sizes: {self.layer_sizes}")
 
+        is_unet = use_unet_shrink or layer_hidden_sizes is not None
+
+        # Pair each "down-path" layer index with its symmetric "up-path" index
+        # (same out_features), so the up-path layer can fuse in the cached
+        # down-path activation the way a U-Net decoder block concatenates the
+        # matching encoder feature map. The true bottleneck layer (i == j)
+        # has no pair, same as real U-Net.
+        self.use_skip = use_unet_skip and is_unet
+        self.pair_of = {}
+        if self.use_skip:
+            n = len(self.layer_sizes)
+            for i in range(n):
+                j = n - 1 - i
+                if i < j and self.layer_sizes[i] == self.layer_sizes[j]:
+                    self.pair_of[j] = i
+        self.skip_source_idxs = set(self.pair_of.values())
+
         self.layers = nn.ModuleList()
         in_features = hidden_size
         for i, out_features in enumerate(self.layer_sizes):
             ff_dim_i = int(out_features * (ff_dim / hidden_size))
-            if use_unet_shrink or layer_hidden_sizes is not None:
+            if is_unet:
                 self.layers.append(
                     UNetEncoderLayer(
                         in_features=in_features,
@@ -59,6 +77,7 @@ class BertEncoder(nn.Module):
                         num_heads=num_heads,
                         dropout=dropout,
                         use_rope=use_rope,
+                        use_skip=i in self.pair_of,
                     )
                 )
             else:
@@ -79,8 +98,14 @@ class BertEncoder(nn.Module):
             self.final_proj = None
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
-        for layer in self.layers:
-            x = layer(x, mask)
+        down_cache = {}
+        for i, layer in enumerate(self.layers):
+            if self.use_skip and i in self.pair_of:
+                x = layer(x, mask, skip=down_cache.get(self.pair_of[i]))
+            else:
+                x = layer(x, mask)
+            if self.use_skip and i in self.skip_source_idxs:
+                down_cache[i] = x
         if self.final_proj is not None:
             x = self.final_proj(x)
         return x
@@ -107,6 +132,7 @@ class BertForPreTraining(nn.Module):
             use_unet_shrink=getattr(cfg, "use_unet_shrink", False),
             unet_bottleneck_ratio=getattr(cfg, "unet_bottleneck_ratio", 0.5),
             layer_hidden_sizes=getattr(cfg, "layer_hidden_sizes", None),
+            use_unet_skip=getattr(cfg, "use_unet_skip", False),
         )
         self.norm = nn.LayerNorm(cfg.hidden_size)
 

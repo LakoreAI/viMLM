@@ -12,7 +12,8 @@ def eval_epoch(model, loader, device):
         attn_mask = attn_mask.to(device)
         mlm_labels = mlm_labels.to(device)
 
-        with torch.cuda.amp.autocast(enabled=(device.type == "cuda")):
+        device_type = "cuda" if device.type == "cuda" else "cpu"
+        with torch.amp.autocast(device_type=device_type, enabled=(device.type == "cuda")):
             out = model(input_ids, segment_ids, mask=attn_mask, mlm_labels=mlm_labels)
             loss = out["loss"]
 
@@ -37,7 +38,7 @@ def eval_epoch(model, loader, device):
     }
 
 
-def eval(model, loader, device, callbacks=None):
+def eval(model, loader, device, callbacks=None, step=0):
     metrics = eval_epoch(model, loader, device)
     print(f"Eval  loss={metrics['loss']:.4f}  mlm_acc={metrics['mlm_acc']:.3f}")
     if callbacks is not None:
@@ -47,7 +48,7 @@ def eval(model, loader, device, callbacks=None):
             if hasattr(cb, "on_evaluate"):
                 cb.on_evaluate(
                     trainer=None,
-                    step=0,
+                    step=step,
                     metrics={
                         "loss": metrics["loss"],
                         "accuracy": metrics["mlm_acc"],

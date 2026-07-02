@@ -70,6 +70,9 @@ class MultiHeadSelfAttention(nn.Module):
         use_rope: bool = False,
     ):
         super().__init__()
+        assert (
+            hidden_size % num_heads == 0
+        ), f"hidden_size ({hidden_size}) must be divisible by num_heads ({num_heads})"
         self.h = num_heads
         self.d_k = hidden_size // num_heads
         self.W_q = nn.Linear(hidden_size, hidden_size)

@@ -13,43 +13,43 @@
   - [x] Implement pipeline in `src/pipe/build_tokenizer.py` to train and serialize custom tokenizers (BPE, WordPiece, Unigram, Char)
 
 
-- [ ] **Config: Connect YAML hyperparameters to the optimizer**
+- [x] **Config: Connect YAML hyperparameters to the optimizer**
   - Fields `learning_rate`, `weight_decay`, and `warmup_ratio` in `training_config.yml` are currently ignored; the optimizer uses CLI defaults silently
   - Read these from `Config` and pass them to `AdamW` and the scheduler in `__main__.py`
 
-- [ ] **Training: Implement model checkpointing**
+- [x] **Training: Implement model checkpointing**
   - `save_best`, `save_last`, and `save_steps` are parsed in the YAML but never acted on
   - Add a `CheckpointCallback` or inline logic in `training_pipe.py` to save model weights using `torch.save`
   - Reference: HuggingFace Trainer checkpointing pattern
 
-- [ ] **Training: Honor `eval_steps` for mid-epoch evaluation**
+- [x] **Training: Honor `eval_steps` for mid-epoch evaluation**
   - Currently, evaluation only runs once per epoch regardless of the `eval_steps` config
   - Add a step counter check inside `train_epoch()` to trigger `eval_epoch()` every `eval_steps` global steps
   - Reference: Liu et al. (2019) RoBERTa — frequent evaluation is key for monitoring large pretraining runs
 
-- [ ] **Model: Add `hidden_size % num_heads == 0` assertion in `MultiHeadSelfAttention`**
+- [x] **Model: Add `hidden_size % num_heads == 0` assertion in `MultiHeadSelfAttention`**
   - Currently silently truncates the head dimension, leading to subtle shape mismatches
   - Add `assert hidden_size % num_heads == 0` in `__init__`
 
-- [ ] **Callbacks: Fix deprecated W&B `reinit` argument**
+- [x] **Callbacks: Fix deprecated W&B `reinit` argument**
   - `reinit=True` is deprecated as of `wandb>=0.28` and produces a warning on every run
   - Replace with `reinit="finish_previous"` in `WandbCallback.__init__`
   - Reference: W&B migration guide (https://docs.wandb.ai/ref/python/init/)
 
-- [ ] **Callbacks: Wire `log_artifact` into training loop for checkpoint saving**
+- [x] **Callbacks: Wire `log_artifact` into training loop for checkpoint saving**
   - `WandbCallback.log_artifact()` exists but is never called
   - Call it at the end of training (or at each `save_steps`) to track model artifacts in W&B
 
-- [ ] **Tokenizer: Cache compiled BPE merge patterns**
+- [x] **Tokenizer: Cache compiled BPE merge patterns**
   - In `BPETokenizer._tokenize_word()`, regex patterns are recompiled on every word during inference
   - Pre-compile and cache all merge patterns at the end of `train()` into a list for fast encoding
   - Reference: HuggingFace tokenizers library — merge patterns are compiled once at load time
 
-- [ ] **Dataset: Harden random replacement token range in `BertDataCollator`**
+- [x] **Dataset: Harden random replacement token range in `BertDataCollator`**
   - `torch.randint(len(self.special_ids), self.vocab_size, ...)` assumes special token IDs are always in `[0, N_specials)`, which holds for custom tokenizers but may break with HuggingFace tokenizers
   - Use a proper `special_token_id_set` exclusion mask instead of relying on ID ordering
 
-- [ ] **Eval: Pass correct `step` in standalone `eval()`**
+- [x] **Eval: Pass correct `step` in standalone `eval()`**
   - `eval_pipe.eval()` hardcodes `step=0` when calling `on_evaluate`, which misreports the step to W&B
   - Accept an optional `step` argument and pass it through
 
@@ -267,3 +267,20 @@
   - Enable `share_encoder_weights: true` in config — this lets you use `hidden_size: 512, num_layers: 12` at the parameter cost of a single layer
   - Then train longer on more data — the shared weights are forced to generalise across all depths, acting like a recurrent encoder
   - This is the ALBERT recipe and produces very competitive embeddings at a fraction of the param cost
+
+---
+
+## 3-Year SOTA Plan (2026-2029) to Make viMLM the Best Vietnamese NLU Model
+
+- [ ] **Adopt ModernBERT Architecture Standard**
+  - Implement GeGLU activations in FeedForward and remove biases from linear layers.
+  - Upgrade MultiHeadSelfAttention to use FlashAttention-3 and support sequence lengths of 8,192 tokens.
+  - Write a Sequence Packing Data Loader to concatenate short sequences and eliminate padding tokens entirely.
+- [ ] **ELECTRA-style Replaced Token Detection (RTD) Objective**
+  - Replace/augment MLM with the RTD objective, training viMLM as a discriminator classifier on 100% of tokens.
+- [ ] **Instruction-Tuned Encoder Pretraining**
+  - Integrate instruction-following prompts directly into the pretraining corpus, enabling zero-shot instruction execution.
+- [ ] **Biphasic Pretraining Paradigm**
+  - Train in two phases: Causal Language Modeling (CLM) first to learn lexical structure, followed by WWM Masked Language Modeling to extract rich contextual embeddings.
+- [ ] **Advanced Data Filtering and Curation**
+  - Apply MinHash LSH and perplexity filtering to OSCAR / bkainews corpora to compile a high-quality 50GB+ training set.

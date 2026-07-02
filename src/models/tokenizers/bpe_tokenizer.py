@@ -12,6 +12,7 @@ class BPETokenizer:
         self.vocab_size = vocab_size
         self.merges = {}  # (pair) → merged_token
         self.vocab = {}
+        self.compiled_merges = []
 
     def _get_pairs(self, vocab):
         pairs = defaultdict(int)
@@ -60,9 +61,12 @@ class BPETokenizer:
 
     def _tokenize_word(self, word):
         word = " ".join(list(word)) + " </w>"
-        for pair, merged in self.merges.items():
-            bigram = re.escape(" ".join(pair))
-            pattern = re.compile(r"(?<!\S)" + bigram + r"(?!\S)")
+        if not hasattr(self, "compiled_merges") or not self.compiled_merges:
+            self.compiled_merges = [
+                (re.compile(r"(?<!\S)" + re.escape(" ".join(pair)) + r"(?!\S)"), merged)
+                for pair, merged in self.merges.items()
+            ]
+        for pattern, merged in self.compiled_merges:
             word = pattern.sub(merged, word)
         return word.split()
 

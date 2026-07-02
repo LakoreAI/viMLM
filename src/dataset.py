@@ -1,3 +1,4 @@
+import random
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
@@ -49,39 +50,61 @@ class BertDataCollator:
             )
             self.vocab_size = len(tokenizer)
 
-    def torch_mask_tokens(self, inputs):
+        non_special_list = [i for i in range(self.vocab_size) if i not in self.special_ids]
+        if not non_special_list:
+            non_special_list = [0]
+        self.non_special_ids = torch.tensor(non_special_list, dtype=torch.long)
+
+    def torch_mask_tokens(self, inputs, word_ids=None):
         """
         Prepare masked tokens inputs/labels for MLM: 80% MASK, 10% random, 10% original.
         inputs shape: (B, L)
         """
         labels = inputs.clone()
-        probability_matrix = torch.full(labels.shape, self.mlm_probability)
 
-        special_tokens_mask = torch.zeros_like(inputs, dtype=torch.bool)
-        for val in self.special_ids:
-            if val is not None:
-                special_tokens_mask |= inputs == val
+        if word_ids is None:
+            probability_matrix = torch.full(labels.shape, self.mlm_probability)
 
-        probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
-        masked_indices = torch.bernoulli(probability_matrix).bool()
+            special_tokens_mask = torch.zeros_like(inputs, dtype=torch.bool)
+            for val in self.special_ids:
+                if val is not None:
+                    special_tokens_mask |= inputs == val
+
+            probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
+            masked_indices = torch.bernoulli(probability_matrix).bool()
+        else:
+            # Whole Word Masking (WWM)
+            masked_indices = torch.zeros_like(inputs, dtype=torch.bool)
+            for batch_idx in range(inputs.shape[0]):
+                seq_word_ids = word_ids[batch_idx]
+                unique_words = set(seq_word_ids[seq_word_ids != -1].tolist())
+                if not unique_words:
+                    continue
+                num_to_mask = max(1, round(len(unique_words) * self.mlm_probability))
+                words_to_mask = set(random.sample(list(unique_words), num_to_mask))
+
+                for token_idx, w_id in enumerate(seq_word_ids.tolist()):
+                    if w_id in words_to_mask:
+                        masked_indices[batch_idx, token_idx] = True
 
         labels[~masked_indices] = -100  # only calculate loss on masked tokens
 
         # 80% of the time, replace masked input tokens with mask_id
         indices_replaced = (
-            torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
+            torch.bernoulli(torch.full(labels.shape, 0.8, device=inputs.device)).bool() & masked_indices
         )
         inputs[indices_replaced] = self.mask_id
 
         # 10% of the time, replace masked input tokens with random word
         indices_random = (
-            torch.bernoulli(torch.full(labels.shape, 0.5)).bool()
+            torch.bernoulli(torch.full(labels.shape, 0.5, device=inputs.device)).bool()
             & masked_indices
             & ~indices_replaced
         )
-        random_words = torch.randint(
-            len(self.special_ids), self.vocab_size, labels.shape, dtype=torch.long
+        random_indices = torch.randint(
+            0, len(self.non_special_ids), labels.shape, dtype=torch.long, device=inputs.device
         )
+        random_words = self.non_special_ids.to(inputs.device)[random_indices]
         inputs[indices_random] = random_words[indices_random]
 
         # The remaining 10% of the time we keep the original token
@@ -89,11 +112,19 @@ class BertDataCollator:
 
     def __call__(self, samples):
         """
-        samples: list of (input_ids, segment_ids)
+        samples: list of (input_ids, segment_ids, word_ids)
         """
         all_input_ids = [torch.tensor(s[0], dtype=torch.long) for s in samples]
         all_segment_ids = [torch.tensor(s[1], dtype=torch.long) for s in samples]
         all_attn_masks = [torch.ones(len(s[0]), dtype=torch.long) for s in samples]
+
+        if len(samples[0]) > 2:
+            all_word_ids = [torch.tensor(s[2], dtype=torch.long) for s in samples]
+            word_ids = pad_sequence(
+                all_word_ids, batch_first=True, padding_value=-1
+            )
+        else:
+            word_ids = None
 
         # Pad to longest sequence in batch
         input_ids = pad_sequence(
@@ -103,7 +134,7 @@ class BertDataCollator:
         attn_mask = pad_sequence(all_attn_masks, batch_first=True, padding_value=0)
 
         # Vectorized dynamic masking
-        input_ids, mlm_labels = self.torch_mask_tokens(input_ids)
+        input_ids, mlm_labels = self.torch_mask_tokens(input_ids, word_ids=word_ids)
 
         return input_ids, segment_ids, attn_mask, mlm_labels
 
@@ -112,11 +143,13 @@ class BertPreTrainDataset(Dataset):
     """
     Returns raw (unpadded, unmasked) single sentences.
     All masking and padding is handled by BertDataCollator.
+    Supports Whole Word Masking (WWM) word_ids creation.
     """
 
-    def __init__(self, sentences, tokenizer):
+    def __init__(self, sentences, tokenizer, use_wwm=False):
         self.sentences = sentences
         self.tokenizer = tokenizer
+        self.use_wwm = use_wwm
         self.n = len(sentences)
 
     def __len__(self):
@@ -124,6 +157,29 @@ class BertPreTrainDataset(Dataset):
 
     def __getitem__(self, idx):
         sent = self.sentences[idx]
-        input_ids = self.tokenizer.encode(sent)
+
+        if self.use_wwm:
+            # Under_score linked word list
+            words = sent.split()
+            # If the tokenizer is HF tokenizer supporting is_split_into_words
+            if hasattr(self.tokenizer, "is_fast") or hasattr(self.tokenizer, "word_ids"):
+                encoding = self.tokenizer(
+                    words,
+                    is_split_into_words=True,
+                    add_special_tokens=True,
+                    truncation=True,
+                    max_length=512
+                )
+                input_ids = encoding["input_ids"]
+                word_ids = encoding.word_ids()
+                word_ids = [w if w is not None else -1 for w in word_ids]
+            else:
+                # Custom tokenizer fallback: treat each token as its own word
+                input_ids = self.tokenizer.encode(sent)
+                word_ids = list(range(len(input_ids)))
+        else:
+            input_ids = self.tokenizer.encode(sent)
+            word_ids = list(range(len(input_ids)))
+
         segment_ids = [0] * len(input_ids)
-        return input_ids, segment_ids
+        return input_ids, segment_ids, word_ids

@@ -18,10 +18,12 @@ class Config:
         self.num_heads = model_cfg.get("num_heads", 4)
         self.ff_dim = model_cfg.get("ff_dim", 1024)
         self.dropout = model_cfg.get("dropout", 0.1)
+        self.mlm_probability = model_cfg.get("mlm_probability", 0.15)
         self.use_rope = model_cfg.get("use_rope", False)
         self.use_unet_shrink = model_cfg.get("use_unet_shrink", False)
         self.unet_bottleneck_ratio = model_cfg.get("unet_bottleneck_ratio", 0.5)
         self.layer_hidden_sizes = model_cfg.get("layer_hidden_sizes", None)
+        self.use_unet_skip = model_cfg.get("use_unet_skip", False)
 
         # Training/wandb config
         training_cfg = self.raw_config.get("training", {})
@@ -33,6 +35,10 @@ class Config:
         self.weight_decay = training_cfg.get("weight_decay", 0.01)
         self.warmup_ratio = training_cfg.get("warmup_ratio", 0.1)
         self.seed = training_cfg.get("seed", 42)
+        self.epochs = training_cfg.get("epochs", 5)
+        self.batch_size = training_cfg.get("batch_size", 32)
+        self.gradient_accumulation_steps = training_cfg.get("gradient_accumulation_steps", 1)
+        self.use_wwm = training_cfg.get("use_wwm", False)
         self.eval_steps = training_cfg.get("eval_steps", None)
         self.save_steps = training_cfg.get("save_steps", None)
         self.save_best = training_cfg.get("save_best", False)

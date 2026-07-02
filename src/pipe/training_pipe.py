@@ -11,69 +11,101 @@ def train_epoch(
     scaler=None,
     callbacks=None,
     global_step=0,
+    gradient_accumulation_steps=1,
+    eval_loader=None,
+    eval_steps=None,
 ):
     model.train()
     total_loss, total_mlm, n_batches = 0, 0, 0
 
-    for input_ids, segment_ids, attn_mask, mlm_labels in loader:
+    optimizer.zero_grad()
+
+    for step_idx, (input_ids, segment_ids, attn_mask, mlm_labels) in enumerate(loader):
         input_ids = input_ids.to(device)
         segment_ids = segment_ids.to(device)
         attn_mask = attn_mask.to(device)
         mlm_labels = mlm_labels.to(device)
 
-        optimizer.zero_grad()
-
         # Autocast mixed precision
-        with torch.cuda.amp.autocast(enabled=(device.type == "cuda")):
+        device_type = "cuda" if device.type == "cuda" else "cpu"
+        with torch.amp.autocast(device_type=device_type, enabled=(device.type == "cuda")):
             out = model(input_ids, segment_ids, mask=attn_mask, mlm_labels=mlm_labels)
             loss = out["loss"]
+            if gradient_accumulation_steps > 1:
+                loss = loss / gradient_accumulation_steps
 
         if scaler is not None and device.type == "cuda":
             scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(optimizer)
-            scaler.update()
         else:
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
 
-        lr = optimizer.param_groups[0]["lr"]
-        if scheduler is not None:
-            scheduler.step()
+        # Optimizer step
+        if (step_idx + 1) % gradient_accumulation_steps == 0 or (step_idx + 1) == len(loader):
+            if scaler is not None and device.type == "cuda":
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
 
-        # MLM accuracy on masked positions only
-        masked = mlm_labels != -100
-        if masked.any():
-            mlm_acc = (
-                (out["mlm_logits"].argmax(-1)[masked] == mlm_labels[masked])
-                .float()
-                .mean()
-                .item()
-            )
-        else:
-            mlm_acc = 0.0
+            optimizer.zero_grad()
 
-        if callbacks is not None:
-            for cb in callbacks:
-                if hasattr(cb, "on_step_end"):
-                    cb.on_step_end(
-                        trainer=None, step=global_step, loss=loss.item(), lr=lr
-                    )
-                if hasattr(cb, "log_metrics"):
-                    cb.log_metrics(
-                        {"mlm_acc": mlm_acc}, step=global_step, prefix="train"
-                    )
+            lr = optimizer.param_groups[0]["lr"]
+            if scheduler is not None:
+                scheduler.step()
 
-        total_loss += loss.item()
-        total_mlm += mlm_acc
-        n_batches += 1
-        global_step += 1
+            global_step += 1
+
+            # MLM accuracy on masked positions only
+            masked = mlm_labels != -100
+            if masked.any():
+                mlm_acc = (
+                    (out["mlm_logits"].argmax(-1)[masked] == mlm_labels[masked])
+                    .float()
+                    .mean()
+                    .item()
+                )
+            else:
+                mlm_acc = 0.0
+
+            logged_loss = loss.item() * gradient_accumulation_steps
+
+            if callbacks is not None:
+                for cb in callbacks:
+                    if hasattr(cb, "on_step_end"):
+                        cb.on_step_end(
+                            trainer=None, step=global_step, loss=logged_loss, lr=lr
+                        )
+                    if hasattr(cb, "log_metrics"):
+                        cb.log_metrics(
+                            {"mlm_acc": mlm_acc}, step=global_step, prefix="train"
+                        )
+
+            total_loss += logged_loss
+            total_mlm += mlm_acc
+            n_batches += 1
+
+            # Mid-epoch evaluation
+            if eval_loader is not None and eval_steps is not None and global_step % eval_steps == 0:
+                eval_metrics = eval_epoch(model, eval_loader, device)
+                print(f"\nStep {global_step} | val_loss={eval_metrics['loss']:.4f}  val_mlm_acc={eval_metrics['mlm_acc']:.3f}")
+                if callbacks is not None:
+                    for cb in callbacks:
+                        if hasattr(cb, "on_evaluate"):
+                            cb.on_evaluate(
+                                trainer=None,
+                                step=global_step,
+                                metrics={
+                                    "loss": eval_metrics["loss"],
+                                    "accuracy": eval_metrics["mlm_acc"],
+                                },
+                            )
 
     return {
-        "loss": total_loss / n_batches,
-        "mlm_acc": total_mlm / n_batches,
+        "loss": total_loss / max(n_batches, 1),
+        "mlm_acc": total_mlm / max(n_batches, 1),
     }, global_step
 
 
@@ -86,8 +118,10 @@ def train(
     scheduler=None,
     eval_loader=None,
     callbacks=None,
+    gradient_accumulation_steps=1,
+    eval_steps=None,
 ):
-    scaler = torch.cuda.amp.GradScaler(enabled=(device.type == "cuda"))
+    scaler = torch.amp.GradScaler("cuda", enabled=(device.type == "cuda"))
 
     if callbacks is None:
         callbacks = []
@@ -109,6 +143,9 @@ def train(
             scaler=scaler,
             callbacks=callbacks,
             global_step=global_step,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            eval_loader=eval_loader,
+            eval_steps=eval_steps,
         )
 
         log = (

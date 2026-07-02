@@ -378,7 +378,7 @@ Reference:
 - HuggingFace `transformers.set_seed()` — https://huggingface.co/docs/transformers/main_classes/utilities
 
 
-## 🚀 Maximum Impact References
+## Maximum Impact References
 
 ### U. Whole Word Masking + `word_segmenter.py` Integration
 `word_segmenter.py` uses `underthesea.word_tokenize(text, format="text")` which returns a space-joined string of underscore-linked words (e.g., `"học_sinh trường đại_học"`).
@@ -502,12 +502,12 @@ Reference:
 
 ### Summary: Recommended Execution Order
 ```
-1.  seed_everything()                    ✅ done
-2.  wire lr/wd/warmup from cfg           ✅ done
+1.  seed_everything()                    done
+2.  wire lr/wd/warmup from cfg           done
 3.  BF16 AMP                             trivial — 1 line
 4.  torch.compile()                      trivial — 1 line
 5.  gradient checkpointing               trivial — 1 line
-6.  WWM via word_segmenter.py            ✅ segmenter built — wire it in
+6.  WWM via word_segmenter.py            segmenter built — wired in
 7.  8-bit AdamW                          1 import change
 8.  Switch to Vietnamese corpus          config change
 9.  SpanBERT span masking                low complexity
@@ -516,3 +516,41 @@ Reference:
 12. Knowledge distillation               medium — new pipe
 13. DDP multi-GPU                        medium — launcher change
 ```
+
+## Word Segmentation vs. Token-Level Masking for Vietnamese MLM
+
+### Overview
+In Vietnamese, spaces are used to separate syllables rather than words. Around 85% of Vietnamese words are multi-syllabic compounds consisting of multiple space-separated syllables (e.g., "học sinh" = student, "đại học" = university). 
+
+### The Problem: Token-Level Masking
+If pretraining is performed without word segmentation:
+1. The subword tokenizer treats spaces as boundaries, split-encoding multi-syllable compounds into separate tokens (e.g., "học" and "sinh").
+2. During training, if "sinh" is masked but "học" is left visible, the model can trivially predict "sinh" based on local spelling collocation.
+3. This creates a low pretraining loss but prevents the model from learning deeper syntactic and semantic representations of the overall sentence structure.
+
+### The Solution: Word Segmentation & Whole Word Masking (WWM)
+Applying word segmentation (e.g., converting "học sinh" to "học_sinh") and masking all subwords of a word together (WWM) fixes this issue:
+1. The tokenizer views "học_sinh" as a single compound entity.
+2. If selected for masking, all subwords of the compound are masked together.
+3. This forces the model to rely on global sentence-level semantics to predict the missing unit, leading to much richer contextualized representations.
+4. Extrinsic benchmarks (such as PhoBERT and ViDeBERTa) demonstrate that word segmentation prior to pretraining yields significantly higher downstream transfer accuracy (F1-score) on classification and sequence labeling tasks.
+
+---
+
+## 3-Year SOTA Plan (2026-2029) to Make viMLM the Best Vietnamese NLU Model
+
+Based on industry trends, encoder-only models are optimized using the following architectural and pretraining paradigm shifts to outperform older structures:
+
+### 1. ModernBERT Architecture Upgrades
+*   **GeGLU Activations:** Replace standard GELU feedforward layers with gated GeGLU/SwiGLU variants. To keep parameters constant, scale the intermediate dimension `ff_dim` down by approximately 2/3.
+*   **Remove Linear Layer Biases:** Strip the `bias=True` parameter from all key, query, value, and output linear projections. Biases are redundant when LayerNorm/RMSNorm immediately follows, and removing them increases hardware throughput.
+*   **Unpadding / Dynamic Sequence Packing:** Do not pad sequences to `max_seq_len` inside training batches. Instead, concatenate all training sentences into a single continuous stream separated by special tokens, and pass a block-diagonal attention mask to prevent attention cross-contamination. This increases training throughput by up to 2x.
+*   **8k Context Windows:** Train using Rotary Position Embeddings (RoPE) and dynamically extend sequence context lengths up to 8,192 tokens using sequence length curriculum training.
+
+### 2. Modern Pretraining Objectives
+*   **Replaced Token Detection (RTD):** Transition training from standard MLM to an ELECTRA-style RTD task where a small generator model masks tokens and the target discriminator model (viMLM) predicts whether each token was replaced or is original. This trains on 100% of tokens in every step rather than 15-30% in MLM, improving sample efficiency by 4x.
+*   **Instruction-Tuning during Pretraining:** Mix structured instruction-following datasets directly into the pretraining corpus, training the model to follow prompts zero-shot directly using its pretraining mask projection head.
+
+### 3. Data Engineering & Curation
+*   **MinHash LSH Deduplication:** Apply MinHash LSH deduplication on character n-grams to remove low-value, duplicate crawled content.
+*   **Curated Academic / News Corpus:** Prioritize Bkainews, Wikipedia, and OSCAR-vi over general crawled web text.

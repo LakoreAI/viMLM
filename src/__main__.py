@@ -48,28 +48,38 @@ def main():
     print("Loading corpus...")
     sentences = load_sentences_from_file(args.data_path)
     print(f"Loaded {len(sentences)} sentences.")
+    
+    use_wwm = getattr(cfg, "use_wwm", False)
+    if use_wwm:
+        print("Segmenting Vietnamese words for Whole Word Masking...")
+        from src.models.word_segmenter import segment_words
+        sentences = segment_words(sentences)
+        print("Segmentation complete.")
 
     # 2) Split Train/Eval
-    dataset = BertPreTrainDataset(sentences, cfg.tokenizer)
+    dataset = BertPreTrainDataset(sentences, cfg.tokenizer, use_wwm=use_wwm)
     eval_len = int(len(dataset) * args.eval_ratio)
     train_dataset, eval_dataset = random_split(
         dataset, [len(dataset) - eval_len, eval_len]
     )
 
     # 3) Data Collator
-    data_collator = BertDataCollator(cfg.tokenizer, mlm_probability=0.15)
+    mlm_probability = getattr(cfg, "mlm_probability", 0.15)
+    data_collator = BertDataCollator(cfg.tokenizer, mlm_probability=mlm_probability)
 
     # 4) Data Loaders
+    batch_size = getattr(cfg, "batch_size", args.batch_size)
+    eval_batch_size = getattr(cfg, "eval_batch_size", args.eval_batch_size)
     train_loader = DataLoader(
         train_dataset,
-        batch_size=args.batch_size,
+        batch_size=batch_size,
         shuffle=True,
         collate_fn=data_collator,
         num_workers=2,
     )
     eval_loader = DataLoader(
         eval_dataset,
-        batch_size=args.eval_batch_size,
+        batch_size=eval_batch_size,
         shuffle=False,
         collate_fn=data_collator,
         num_workers=2,
@@ -84,7 +94,16 @@ def main():
     lr = getattr(cfg, "learning_rate", args.lr)
     weight_decay = getattr(cfg, "weight_decay", 0.01)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    total_steps = len(train_loader) * args.epochs
+    
+    epochs = getattr(cfg, "epochs", args.epochs)
+    grad_accum_steps = getattr(cfg, "gradient_accumulation_steps", 1)
+    
+    # Calculate optimization steps
+    steps_per_epoch = len(train_loader) // grad_accum_steps
+    if len(train_loader) % grad_accum_steps != 0:
+        steps_per_epoch += 1
+    total_steps = steps_per_epoch * epochs
+
     warmup_ratio = getattr(cfg, "warmup_ratio", None)
     warmup_steps = int(total_steps * warmup_ratio) if warmup_ratio else args.warmup_steps
     if args.scheduler == "cosine":
@@ -102,6 +121,7 @@ def main():
 
     # 7) Train
     callbacks = []
+    wandb_cb = None
     if cfg.use_wandb:
         from src.callbacks.wandb_callbacks import WandbCallback
 
@@ -111,7 +131,23 @@ def main():
             config=cfg.raw_config,
             entity=cfg.wandb_entity,
         )
+
+    # Checkpoint callback integration
+    from src.callbacks.checkpoint_callback import CheckpointCallback
+    checkpoint_cb = CheckpointCallback(
+        model=model,
+        checkpoint_dir=getattr(cfg, "checkpoint_dir", "./checkpoints"),
+        save_best=getattr(cfg, "save_best", True),
+        save_last=getattr(cfg, "save_last", True),
+        save_steps=getattr(cfg, "save_steps", None),
+        wandb_callback=wandb_cb,
+    )
+    callbacks.append(checkpoint_cb)
+
+    if wandb_cb is not None:
         callbacks.append(wandb_cb)
+
+    eval_steps = getattr(cfg, "eval_steps", None) or args.eval_steps
 
     print("Starting training...")
     train(
@@ -120,9 +156,11 @@ def main():
         optimizer=optimizer,
         scheduler=scheduler,
         device=device,
-        epochs=args.epochs,
+        epochs=epochs,
         eval_loader=eval_loader,
         callbacks=callbacks,
+        gradient_accumulation_steps=grad_accum_steps,
+        eval_steps=eval_steps,
     )
 
 

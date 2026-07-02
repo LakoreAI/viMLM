@@ -1,5 +1,6 @@
 huggingface_hub==0.35.3
 PyYAML==6.0.2
-torch==2.4.1+cu121
+torch==2.4.1
 transformers==4.53.2
+underthesea==9.5.0
 wandb==0.28.0

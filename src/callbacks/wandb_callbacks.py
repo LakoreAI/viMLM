@@ -13,7 +13,7 @@ class WandbCallback:
             name=run_name,
             config=config,
             entity=entity,
-            reinit=True,
+            reinit="finish_previous",
         )
         self.best_accuracy = 0.0
 

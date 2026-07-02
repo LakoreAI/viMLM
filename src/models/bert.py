@@ -137,7 +137,6 @@ class BertForPreTraining(nn.Module):
             hidden_size=cfg.hidden_size,
             max_seq_len=cfg.max_seq_len,
             dropout=cfg.dropout,
-            use_rope=getattr(cfg, "use_rope", False),
         )
         self.encoder = BertEncoder(
             hidden_size=cfg.hidden_size,

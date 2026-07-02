@@ -50,7 +50,9 @@ class BertDataCollator:
             )
             self.vocab_size = len(tokenizer)
 
-        non_special_list = [i for i in range(self.vocab_size) if i not in self.special_ids]
+        non_special_list = [
+            i for i in range(self.vocab_size) if i not in self.special_ids
+        ]
         if not non_special_list:
             non_special_list = [0]
         self.non_special_ids = torch.tensor(non_special_list, dtype=torch.long)
@@ -91,7 +93,8 @@ class BertDataCollator:
 
         # 80% of the time, replace masked input tokens with mask_id
         indices_replaced = (
-            torch.bernoulli(torch.full(labels.shape, 0.8, device=inputs.device)).bool() & masked_indices
+            torch.bernoulli(torch.full(labels.shape, 0.8, device=inputs.device)).bool()
+            & masked_indices
         )
         inputs[indices_replaced] = self.mask_id
 
@@ -102,7 +105,11 @@ class BertDataCollator:
             & ~indices_replaced
         )
         random_indices = torch.randint(
-            0, len(self.non_special_ids), labels.shape, dtype=torch.long, device=inputs.device
+            0,
+            len(self.non_special_ids),
+            labels.shape,
+            dtype=torch.long,
+            device=inputs.device,
         )
         random_words = self.non_special_ids.to(inputs.device)[random_indices]
         inputs[indices_random] = random_words[indices_random]
@@ -120,9 +127,7 @@ class BertDataCollator:
 
         if len(samples[0]) > 2:
             all_word_ids = [torch.tensor(s[2], dtype=torch.long) for s in samples]
-            word_ids = pad_sequence(
-                all_word_ids, batch_first=True, padding_value=-1
-            )
+            word_ids = pad_sequence(all_word_ids, batch_first=True, padding_value=-1)
         else:
             word_ids = None
 
@@ -162,13 +167,15 @@ class BertPreTrainDataset(Dataset):
             # Under_score linked word list
             words = sent.split()
             # If the tokenizer is HF tokenizer supporting is_split_into_words
-            if hasattr(self.tokenizer, "is_fast") or hasattr(self.tokenizer, "word_ids"):
+            if hasattr(self.tokenizer, "is_fast") or hasattr(
+                self.tokenizer, "word_ids"
+            ):
                 encoding = self.tokenizer(
                     words,
                     is_split_into_words=True,
                     add_special_tokens=True,
                     truncation=True,
-                    max_length=512
+                    max_length=512,
                 )
                 input_ids = encoding["input_ids"]
                 word_ids = encoding.word_ids()

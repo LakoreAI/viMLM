@@ -12,6 +12,8 @@ def load_sentences_from_file(path: str) -> list[str]:
 
     n_dupes = len(sentences) - len(deduped)
     if n_dupes:
-        print(f"Removed {n_dupes} duplicate sentence(s) ({n_dupes / len(sentences):.1%} of corpus)")
+        print(
+            f"Removed {n_dupes} duplicate sentence(s) ({n_dupes / len(sentences):.1%} of corpus)"
+        )
 
     return deduped

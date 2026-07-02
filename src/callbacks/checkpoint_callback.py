@@ -1,6 +1,7 @@
 import os
 import torch
 
+
 class CheckpointCallback:
     def __init__(
         self,
@@ -9,7 +10,7 @@ class CheckpointCallback:
         save_best: bool = True,
         save_last: bool = True,
         save_steps: int = None,
-        wandb_callback = None,
+        wandb_callback=None,
     ):
         """
         Callback for model checkpointing.
@@ -34,7 +35,9 @@ class CheckpointCallback:
             print(f"Saved step checkpoint to {checkpoint_path}")
             if self.wandb_callback is not None:
                 try:
-                    self.wandb_callback.log_artifact(checkpoint_path, name=f"checkpoint-{step}")
+                    self.wandb_callback.log_artifact(
+                        checkpoint_path, name=f"checkpoint-{step}"
+                    )
                 except Exception as e:
                     print(f"Warning: Failed to log checkpoint to W&B: {e}")
 
@@ -45,7 +48,9 @@ class CheckpointCallback:
                 self.best_loss = loss
                 best_path = os.path.join(self.checkpoint_dir, "best_model.pt")
                 self._save_checkpoint(best_path)
-                print(f"Saved new best model checkpoint to {best_path} with loss: {loss:.4f}")
+                print(
+                    f"Saved new best model checkpoint to {best_path} with loss: {loss:.4f}"
+                )
                 if self.wandb_callback is not None:
                     try:
                         self.wandb_callback.log_artifact(best_path, name="best-model")
@@ -69,7 +74,10 @@ class CheckpointCallback:
         if hasattr(model_to_save, "_orig_mod"):
             model_to_save = model_to_save._orig_mod
 
-        torch.save({
-            "model_state_dict": model_to_save.state_dict(),
-            "config": getattr(model_to_save, "cfg", None),
-        }, path)
+        torch.save(
+            {
+                "model_state_dict": model_to_save.state_dict(),
+                "config": getattr(model_to_save, "cfg", None),
+            },
+            path,
+        )

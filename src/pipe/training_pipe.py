@@ -37,7 +37,9 @@ def train_epoch(
         loss.backward()
 
         # Optimizer step
-        if (step_idx + 1) % gradient_accumulation_steps == 0 or (step_idx + 1) == len(loader):
+        if (step_idx + 1) % gradient_accumulation_steps == 0 or (step_idx + 1) == len(
+            loader
+        ):
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
@@ -83,9 +85,15 @@ def train_epoch(
             n_batches += 1
 
             # Mid-epoch evaluation
-            if eval_loader is not None and eval_steps is not None and global_step % eval_steps == 0:
+            if (
+                eval_loader is not None
+                and eval_steps is not None
+                and global_step % eval_steps == 0
+            ):
                 eval_metrics = eval_epoch(model, eval_loader, device)
-                print(f"\nStep {global_step} | val_loss={eval_metrics['loss']:.4f}  val_mlm_acc={eval_metrics['mlm_acc']:.3f}")
+                print(
+                    f"\nStep {global_step} | val_loss={eval_metrics['loss']:.4f}  val_mlm_acc={eval_metrics['mlm_acc']:.3f}"
+                )
                 if callbacks is not None:
                     for cb in callbacks:
                         if hasattr(cb, "on_evaluate"):
